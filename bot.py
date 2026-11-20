@@ -63,8 +63,8 @@ def echo(update: Update, context: CallbackContext) -> None:
             verify_ssl_certs=False
         )
         
-        # === ИСПРАВЛЕННЫЙ ВЫЗОВ (без 'messages=') ===
-        response = client.chat(user_message)
+        # === ГЛАВНОЕ ИСПРАВЛЕНИЕ: меняем 'messages' на 'message' ===
+        response = client.chat(message=user_message)
         
         context.bot.send_message(chat_id=chat_id, text=response.text)
 
