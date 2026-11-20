@@ -1,5 +1,6 @@
 import logging
 import os
+import inspect
 from dotenv import load_dotenv
 from telegram import Update, ForceReply
 from telegram.ext import Updater, CommandHandler, MessageHandler, filters, CallbackContext
@@ -16,7 +17,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# --- ДИАГНОСТИКА ---
+# --- ДИАГНОСТИКА ЗАПУСКА ---
 print("=" * 60)
 print("ЗАПУСК БОТА: ДИАГНОСТИКА")
 print("=" * 60)
@@ -25,16 +26,12 @@ print(f"GIGACHAT_API_KEY: {'OK' if GIGACHAT_KEY else 'ОТСУТСТВУЕТ'}")
 print("=" * 60)
 
 
-# --- ОБРАБОТЧИКИ ---
-
+# --- ОБРАБОТЧИК КОМАНДЫ /start ---
 def start(update: Update, context: CallbackContext) -> None:
-    """Команда /start"""
     user_first_name = update.effective_user.first_name
-    
     if not TELEGRAM_TOKEN:
         update.message.reply_text(f"Привет, {user_first_name}! Я в режиме ОТЛАДКИ.")
         return
-
     update.message.reply_text(
         f"Привет, {user_first_name}! 👋\n"
         f"Я Бот-Друган на базе GigaChat.\n\n"
@@ -42,8 +39,8 @@ def start(update: Update, context: CallbackContext) -> None:
         reply_markup=ForceReply(selective=True),
     )
 
+# --- ОБРАБОТЧИК СООБЩЕНИЙ (с перебором аргументов) ---
 def echo(update: Update, context: CallbackContext) -> None:
-    """Ответ на сообщения"""
     user_message = update.message.text
     user_first_name = update.effective_user.first_name
     chat_id = update.effective_chat.id
@@ -62,35 +59,75 @@ def echo(update: Update, context: CallbackContext) -> None:
             credentials=GIGACHAT_KEY,
             verify_ssl_certs=False
         )
+
+        # === АВТОМАТИЧЕСКИЙ ПОДБОР АРГУМЕНТА ===
+        response = None
         
-        # === ГЛАВНОЕ ИСПРАВЛЕНИЕ: меняем 'messages' на 'message' ===
-        response = client.chat(message=user_message)
-        
+        # Проверяем сигнатуру функции (шпионаж)
+        try:
+            sig = inspect.signature(client.chat)
+            args_list = list(sig.parameters.keys())
+            print(f"DEBUG: GigaChat.chat принимает: {args_list}")
+        except Exception:
+            print("DEBUG: Не удалось проверить сигнатуру функции.")
+
+        # 1. Пробуем 'message' (самый частый вариант)
+        try:
+            response = client.chat(message=user_message)
+        except TypeError:
+            pass
+
+        # 2. Пробуем 'messages' (как в твоей ошибке)
+        if response is None:
+            try:
+                response = client.chat(messages=user_message)
+            except TypeError:
+                pass
+
+        # 3. Пробуем просто текст (позиционный аргумент)
+        if response is None:
+            try:
+                response = client.chat(user_message)
+            except TypeError:
+                pass
+
+        # 4. Пробуем 'text'
+        if response is None:
+            try:
+                response = client.chat(text=user_message)
+            except TypeError:
+                pass
+
+        # Если ни один способ не сработал
+        if response is None:
+            error_text = "Не удалось подобрать аргумент для GigaChat. См. логи."
+            logger.error("Все варианты вызова GigaChat провалились.")
+            context.bot.send_message(chat_id=chat_id, text=error_text)
+            return
+
+        # Если всё ок, отправляем ответ
         context.bot.send_message(chat_id=chat_id, text=response.text)
 
     except Exception as e:
-        logger.error(f"Ошибка GigaChat: {e}")
-        context.bot.send_message(chat_id=chat_id, text=f"{user_first_name}, ошибка сервиса. Попробуй позже.")
+        logger.error(f"Критическая ошибка: {e}")
+        context.bot.send_message(chat_id=chat_id, text=f"{user_first_name}, критическая ошибка сервиса.")
 
 
-# --- ГЛАВНАЯ ФУНКЦИЯ ---
-
+# --- ГЛАВНАЯ ТОЧКА ВХОДА ---
 def main() -> None:
     if not TELEGRAM_TOKEN:
         logger.critical("FATAL: TELEGRAM_TOKEN is missing.")
         return
 
-    # Используем Updater (Legacy mode), чтобы избежать багов Python 3.13+
+    # Используем Updater для обхода багов Python 3.13+
     updater = Updater(TELEGRAM_TOKEN)
     dispatcher = updater.dispatcher
 
-    # Регистрация команд
     dispatcher.add_handler(CommandHandler("start", start))
     dispatcher.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
 
     print("✅ Бот запущен в режиме POLLING. Ожидаю сообщения...")
     
-    # Запуск бесконечного цикла
     updater.start_polling(drop_pending_updates=True)
     updater.idle()
 
