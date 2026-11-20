@@ -1,6 +1,6 @@
 import logging
 import os
-import inspect
+import inspect  # <<< ЭТОЙ СТРОКИ НЕ ХВАТАЛО РАНЬШЕ
 from dotenv import load_dotenv
 from telegram import Update, ForceReply
 from telegram.ext import Updater, CommandHandler, MessageHandler, filters, CallbackContext
@@ -26,7 +26,7 @@ print(f"GIGACHAT_API_KEY: {'OK' if GIGACHAT_KEY else 'ОТСУТСТВУЕТ'}")
 print("=" * 60)
 
 
-# --- ОБРАБОТЧИК КОМАНДЫ /start ---
+# --- ОБРАБОТЧИК /start ---
 def start(update: Update, context: CallbackContext) -> None:
     user_first_name = update.effective_user.first_name
     if not TELEGRAM_TOKEN:
@@ -39,7 +39,7 @@ def start(update: Update, context: CallbackContext) -> None:
         reply_markup=ForceReply(selective=True),
     )
 
-# --- ОБРАБОТЧИК СООБЩЕНИЙ (с перебором аргументов) ---
+# --- ОБРАБОТЧИК СООБЩЕНИЙ (ШПИОН) ---
 def echo(update: Update, context: CallbackContext) -> None:
     user_message = update.message.text
     user_first_name = update.effective_user.first_name
@@ -60,31 +60,30 @@ def echo(update: Update, context: CallbackContext) -> None:
             verify_ssl_certs=False
         )
 
-        # === АВТОМАТИЧЕСКИЙ ПОДБОР АРГУМЕНТА ===
+        # === ШПИОНСКАЯ ПРОВЕРКА (ТЕПЕРЬ ОНА РАБОТАЕТ) ===
         response = None
         
-        # Проверяем сигнатуру функции (шпионаж)
         try:
             sig = inspect.signature(client.chat)
             args_list = list(sig.parameters.keys())
-            print(f"DEBUG: GigaChat.chat принимает: {args_list}")
-        except Exception:
-            print("DEBUG: Не удалось проверить сигнатуру функции.")
+            print(f"DEBUG: GigaChat.chat принимает аргументы: {args_list}")
+        except Exception as e:
+            print(f"DEBUG: Не удалось проверить сигнатуру: {e}")
 
-        # 1. Пробуем 'message' (самый частый вариант)
+        # 1. Пробуем 'message'
         try:
             response = client.chat(message=user_message)
         except TypeError:
             pass
 
-        # 2. Пробуем 'messages' (как в твоей ошибке)
+        # 2. Пробуем 'messages'
         if response is None:
             try:
                 response = client.chat(messages=user_message)
             except TypeError:
                 pass
 
-        # 3. Пробуем просто текст (позиционный аргумент)
+        # 3. Пробуем просто текст
         if response is None:
             try:
                 response = client.chat(user_message)
@@ -98,28 +97,26 @@ def echo(update: Update, context: CallbackContext) -> None:
             except TypeError:
                 pass
 
-        # Если ни один способ не сработал
+        # Если ничего не подошло
         if response is None:
-            error_text = "Не удалось подобрать аргумент для GigaChat. См. логи."
             logger.error("Все варианты вызова GigaChat провалились.")
-            context.bot.send_message(chat_id=chat_id, text=error_text)
+            context.bot.send_message(chat_id=chat_id, text="Ошибка: не подошел ни один аргумент.")
             return
 
-        # Если всё ок, отправляем ответ
+        # Успех
         context.bot.send_message(chat_id=chat_id, text=response.text)
 
     except Exception as e:
         logger.error(f"Критическая ошибка: {e}")
-        context.bot.send_message(chat_id=chat_id, text=f"{user_first_name}, критическая ошибка сервиса.")
+        context.bot.send_message(chat_id=chat_id, text=f"{user_first_name}, критическая ошибка.")
 
 
-# --- ГЛАВНАЯ ТОЧКА ВХОДА ---
+# --- ГЛАВНАЯ ТОЧКА ---
 def main() -> None:
     if not TELEGRAM_TOKEN:
         logger.critical("FATAL: TELEGRAM_TOKEN is missing.")
         return
 
-    # Используем Updater для обхода багов Python 3.13+
     updater = Updater(TELEGRAM_TOKEN)
     dispatcher = updater.dispatcher
 
