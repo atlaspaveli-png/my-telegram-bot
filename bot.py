@@ -3,7 +3,7 @@ import os
 from dotenv import load_dotenv
 from httpx import Timeout
 from telegram import Update, ForceReply
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
+from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
 # --- ЗАГРУЗКА ПЕРЕМЕННЫХ ---
 load_dotenv()
@@ -19,39 +19,34 @@ logger = logging.getLogger(__name__)
 
 # --- ДИАГНОСТИКА ---
 print("=" * 50)
-print("RENDER / .ENV DIAGNOSTIC (FINAL LEGACY)")
+print("RENDER / .ENV DIAGNOSTIC (V20)")
 print("=" * 50)
 print(f"TELEGRAM_TOKEN: {'OK' if TELEGRAM_TOKEN else 'MISSING'}")
 print(f"GIGACHAT_API_KEY: {'OK' if GIGACHAT_KEY else 'MISSING'}")
 print("=" * 50)
 
 
-# --- ФУНКЦИИ БОТА (СТАРЫЙ СТИЛЬ) ---
-# Здесь мы добавляем 'bot=context.bot' в аргументы, так как нет use_context
+# --- ФУНКЦИИ БОТА ---
 
-def start(update: Update, context) -> None:
+async def start(update: Update, context) -> None:
     user_first_name = update.effective_user.first_name
     if not TELEGRAM_TOKEN:
-        update.message.reply_text(f"Привет, {user_first_name}! Я в режиме ДЕБАГ.")
+        await update.message.reply_text(f"Привет, {user_first_name}! Я в режиме ДЕБАГ.")
         return
-    
-    # В старых версиях контекст не имеет bot по умолчанию
-    bot = context.bot
-    bot.send_message(
-        chat_id=update.effective_chat.id,
-        text=f"Привет, {user_first_name}! Я Бот-Друган на GigaChat. \n\nНапиши мне что-нибудь.",
-        reply_markup=ForceReply(selective=True)
+    await update.message.reply_text(
+        f"Привет, {user_first_name}! Я Бот-Друган на GigaChat. \n\nНапиши мне что-нибудь.",
+        reply_markup=ForceReply(selective=True),
     )
 
-def echo(update: Update, context) -> None:
+async def echo(update: Update, context) -> None:
     user_message = update.message.text
     user_first_name = update.effective_user.first_name
 
     if not GIGACHAT_KEY:
-        context.bot.send_message(chat_id=update.effective_chat.id, text=f"{user_first_name}, ключ GigaChat не настроен.")
+        await update.message.reply_text(f"{user_first_name}, ключ GigaChat не настроен.")
         return
 
-    context.bot.send_message(chat_id=update.effective_chat.id, text="Думаю... 🤔")
+    await update.message.reply_text("Думаю... 🤔")
 
     try:
         from gigachat import GigaChat
@@ -63,31 +58,28 @@ def echo(update: Update, context) -> None:
         )
         
         response = client.chat(messages=user_message)
-        context.bot.send_message(chat_id=update.effective_chat.id, text=response.text)
+        await update.message.reply_text(response.text)
 
     except Exception as e:
         logger.error(f"Ошибка GigaChat: {e}")
-        context.bot.send_message(chat_id=update.effective_chat.id, text=f"{user_first_name}, ошибка при обращении к GigaChat.")
+        await update.message.reply_text(f"{user_first_name}, ошибка при обращении к GigaChat.")
 
 def main() -> None:
     if not TELEGRAM_TOKEN:
         logger.critical("CRITICAL: TELEGRAM_TOKEN is missing.")
         return 
 
-    # --- САМЫЙ ПРОСТОЙ ВЫЗОВ ---
-    # Только токен, никаких use_context, никаких очередей
-    updater = Updater(TELEGRAM_TOKEN)
-    
-    dispatcher = updater.dispatcher
+    # --- СОВРЕМЕННЫЙ СТИЛЬ (Application) ---
+    application = Application.builder().token(TELEGRAM_TOKEN).build()
 
-    # Используем старый Filters вместо filters
-    dispatcher.add_handler(CommandHandler("start", start))
-    dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, echo))
+    application.add_handler(CommandHandler("start", start))
+    # Обратите внимание: filters.text & ~filters.command (с маленькой буквы!)
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
 
-    print("Бот запущен (Legacy mode). Ожидаю сообщения...")
+    print("Бот запущен (Modern v20). Ожидаю сообщения...")
     
-    updater.start_polling(drop_pending_updates=True)
-    updater.idle()
+    # Запуск в режиме опроса
+    application.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
     main()
