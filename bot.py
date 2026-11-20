@@ -69,9 +69,11 @@ def main() -> None:
         logger.critical("CRITICAL: TELEGRAM_TOKEN is missing.")
         return 
 
-    # --- СТАРЫЙ СТИЛЬ СОЗДАНИЯ (который не падает) ---
-    # Используем Updater напрямую вместо Application.builder()
-    updater = Updater(TELEGRAM_TOKEN)
+    # --- ИСПРАВЛЕННАЯ СТРОКА ---
+    # Используем Updater.new_key_in() или передаем None для очереди
+    # Самый простой способ для v20:
+    updater = Updater(TELEGRAM_TOKEN, use_context=True)
+    
     dispatcher = updater.dispatcher
 
     # Регистрируем обработчики
